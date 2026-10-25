@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-title" content="Calorías">
+<title>Contador de calorías</title>
+<style>
+:root{--bg:#f6f4ef;--card:#fff;--tx:#1f2933;--mut:#6b7280;--line:#e2ded5;--acc:#e8590c;--ok:#2f9e44;--bad:#e03131;color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root{--bg:#15181c;--card:#1f242b;--tx:#eceff3;--mut:#9aa4b0;--line:#313944;--acc:#ff8a4c;--ok:#51cf66;--bad:#ff6b6b;color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--tx);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:14px 14px 40px;max-width:560px;margin:0 auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px}
+.nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.nav button{width:44px;height:44px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--tx);font-size:20px;cursor:pointer}
+.nav b{font-size:18px;text-transform:capitalize}
+.big{font-size:38px;font-weight:800;line-height:1}
+.mut{color:var(--mut);font-size:14px}
+.bar{height:12px;border-radius:99px;background:var(--line);overflow:hidden;margin:12px 0 8px}
+.bar i{display:block;height:100%;background:var(--acc);border-radius:99px;transition:width .3s}
+.row{display:flex;justify-content:space-between;gap:8px}
+.goal{border:0;background:none;color:var(--acc);font:inherit;font-weight:600;cursor:pointer;padding:0;text-decoration:underline}
+textarea,input[type=text],input[type=number]{width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--bg);color:var(--tx);font:inherit}
+.it input{width:78px;padding:8px}
+.f{display:flex;gap:8px;margin-top:8px}
+.seg{display:flex;gap:8px;margin-bottom:8px}
+.seg button,.btn{flex:1;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--tx);font:inherit;font-weight:600;cursor:pointer}
+.seg button.on{border-color:var(--acc);color:var(--acc)}
+.btn.main{background:var(--acc);border-color:var(--acc);color:#fff}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chips button{padding:6px 10px;border-radius:99px;border:1px solid var(--line);background:var(--bg);color:var(--tx);font:inherit;font-size:13px;cursor:pointer}
+.it{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.it:first-child{border-top:0}
+.it img{width:44px;height:44px;border-radius:10px;object-fit:cover}
+.it .n{flex:1;min-width:0;overflow-wrap:anywhere}
+.it .k{font-weight:700}
+.it .x{border:0;background:none;color:var(--mut);font-size:22px;cursor:pointer;padding:4px 8px}
+.neg{color:var(--ok)}
+.empty{text-align:center;color:var(--mut);padding:14px 0}
+textarea{resize:vertical}
+.err{color:var(--bad);font-size:14px}
+</style>
+</head>
+<body>
+<div class="nav"><button onclick="go(-1)" aria-label="Día anterior">‹</button><b id="lbl"></b><button onclick="go(1)" aria-label="Día siguiente">›</button></div>
+<div class="card">
+  <div class="row" style="align-items:flex-end"><div><div class="big" id="rem"></div><div class="mut" id="remL"></div></div>
+  <div class="mut" style="text-align:right">Objetivo<br><button class="goal" onclick="setGoal()" id="goal"></button></div></div>
+  <div class="bar"><i id="pct"></i></div>
+  <div class="row mut"><span id="eat"></span><span id="burn"></span></div>
+</div>
+<div class="card">
+  <div class="row" style="align-items:center;margin-bottom:8px"><div class="seg" style="flex:1;margin:0"><button id="bf" class="on" onclick="setType('f')">🍽 Comida</button><button id="be" onclick="setType('e')">🔥 Ejercicio</button></div><button class="btn" style="flex:0 0 52px;margin-left:8px" onclick="cfg()" aria-label="Ajustes de IA">⚙️</button></div>
+  <textarea id="n" rows="2" placeholder="Escribe lo que has comido, p. ej. un filete de atún a la plancha y un puñado de guisantes"></textarea>
+  <div class="f"><input type="number" id="k" inputmode="numeric" placeholder="kcal (solo si lo pones a mano)" min="0"><label class="btn" style="flex:0 0 auto;display:grid;place-items:center" id="ph">📷<input type="file" id="file" accept="image/*" hidden></label></div>
+  <div class="f"><button class="btn main" id="bc" onclick="calc()">✨ Calcular con IA</button><button class="btn" onclick="add()">Añadir a mano</button></div>
+  <div class="chips" id="rec"></div>
+</div>
+<div class="card" id="pend" hidden></div>
+<div class="card" id="list"></div>
+<script>
+var K='cal_v1',S=null,off=0,type='f',img='';
+try{S=JSON.parse(localStorage.getItem(K))}catch(e){}
+if(!S||!S.days)S={goal:2000,days:{},recent:{}};
+function save(){try{localStorage.setItem(K,JSON.stringify(S))}catch(e){alert('No se pudo guardar: almacenamiento lleno.')}}
+function $(i){return document.getElementById(i)}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+function dkey(o){var d=new Date();d.setDate(d.getDate()+o);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function lab(o){if(o===0)return'Hoy';if(o===-1)return'Ayer';if(o===1)return'Mañana';var d=new Date();d.setDate(d.getDate()+o);return d.toLocaleDateString('es-ES',{weekday:'short',day:'numeric',month:'short'})}
+function go(d){off+=d;render()}
+function setType(t){type=t;$('bf').className=t==='f'?'on':'';$('be').className=t==='e'?'on':'';$('n').placeholder=t==='f'?'Escribe lo que has comido, p. ej. un filete de atún a la plancha y un puñado de guisantes':'¿Qué ejercicio has hecho? Apunta las kcal a mano';$('bc').style.display=t==='f'?'':'none'}
+function setGoal(){var v=prompt('Objetivo diario de calorías',S.goal);if(v===null)return;v=parseInt(v,10);if(v>0){S.goal=v;save();render()}}
+function add(){
+  var n=$('n').value.trim(),k=parseInt($('k').value,10);
+  if(!n||!(k>=0)){alert('Escribe el nombre y las kcal.');return}
+  var key=dkey(off);(S.days[key]=S.days[key]||[]).push({id:Date.now(),n:n,k:k,t:type,img:img});
+  if(type==='f')S.recent[n]=k;
+  save();$('n').value='';$('k').value='';resetPhoto();render()
+}
+function quick(n){$('n').value=n;$('k').value=S.recent[n];setType('f')}
+function del(id){var key=dkey(off);S.days[key]=(S.days[key]||[]).filter(function(x){return x.id!==id});save();render()}
+var aiImg='',pend=null,G={key:'',model:'gemini-2.5-flash'};
+try{var g0=JSON.parse(localStorage.getItem('cal_gem'));if(g0)G.key=g0.key||'',G.model=g0.model||G.model}catch(e){}
+function cfg(){var k=prompt('Clave de Gemini (de aistudio.google.com). Se guarda solo en este móvil:',G.key);if(k===null)return;var m=prompt('Modelo de Gemini:',G.model);G.key=k.trim();if(m&&m.trim())G.model=m.trim();try{localStorage.setItem('cal_gem',JSON.stringify(G))}catch(e){}}
+$('file').addEventListener('change',function(e){
+  var f=e.target.files[0];if(!f)return;
+  var r=new FileReader();r.onload=function(){var im=new Image();im.onload=function(){
+    function mk(max,q){var c=document.createElement('canvas'),s=Math.min(1,max/Math.max(im.width,im.height));c.width=im.width*s;c.height=im.height*s;c.getContext('2d').drawImage(im,0,0,c.width,c.height);return c.toDataURL('image/jpeg',q)}
+    img=mk(160,.6);aiImg=mk(768,.7).split(',')[1];$('ph').firstChild.nodeValue='✅'};im.src=r.result};
+  r.readAsDataURL(f)
+});
+function resetPhoto(){img='';aiImg='';$('file').value='';$('ph').firstChild.nodeValue='📷'}
+function showPend(h){var p=$('pend');p.hidden=!h;p.innerHTML=h||''}
+async function calc(){
+  if(type==='e'){alert('Para ejercicio apunta las kcal a mano.');return}
+  var t=$('n').value.trim();
+  if(!t&&!aiImg){alert('Escribe qué has comido o adjunta una foto.');return}
+  if(!G.key){cfg();if(!G.key)return}
+  var b=$('bc');b.disabled=true;b.textContent='Calculando…';showPend('');
+  var prompt0='Eres un nutricionista. Estima las calorías de lo que ha comido el usuario (texto y/o foto). Si no da cantidades, asume raciones normales y escríbelas en el nombre, por ejemplo "Filete de atún a la plancha (150 g)". Un elemento por alimento. Responde SOLO con JSON: {"items":[{"n":"nombre y cantidad","k":kcal como número entero}]}. Lo que ha comido: '+(t||'(mira la foto)');
+  var parts=[{text:prompt0}];if(aiImg)parts.push({inline_data:{mime_type:'image/jpeg',data:aiImg}});
+  try{
+    var r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(G.model)+':generateContent',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':G.key},body:JSON.stringify({contents:[{role:'user',parts:parts}],generationConfig:{responseMimeType:'application/json',temperature:.2}})});
+    var d=await r.json();
+    if(!r.ok){var m=(d.error&&d.error.message)||('Error '+r.status);var hint=r.status===404?' Prueba a cambiar el modelo en ⚙️.':r.status===429?' Has superado el límite gratuito; espera un poco.':(r.status===400||r.status===403)?' Revisa la clave en ⚙️.':'';throw new Error(m+hint)}
+    var txt=d.candidates[0].content.parts.map(function(p){return p.text||''}).join('').replace(/```json|```/g,'').trim();
+    var it=JSON.parse(txt).items;
+    pend=it.map(function(x){return{n:String(x.n).slice(0,80),k:Math.max(0,Math.round(Number(x.k)||0))}}).filter(function(x){return x.n});
+    if(!pend.length)throw new Error('No he podido detectar alimentos.');
+    drawPend()
+  }catch(e){showPend('<div class="err">'+esc(e.message)+'</div>')}
+  b.disabled=false;b.textContent='✨ Calcular con IA'
+}
+function drawPend(){
+  var tot=pend.reduce(function(a,x){return a+x.k},0);
+  showPend('<b>Estimación (puedes corregir las kcal)</b>'+pend.map(function(x,i){return'<div class="it"><div class="n">'+esc(x.n)+'</div><input type="number" inputmode="numeric" value="'+x.k+'" oninput="pend['+i+'].k=parseInt(this.value,10)||0"></div>'}).join('')+'<div class="f"><button class="btn main" onclick="okPend()">Añadir al día</button><button class="btn" onclick="showPend(\'\')">Descartar</button></div><div class="mut" style="margin-top:8px">Total aprox.: '+tot+' kcal · es una estimación</div>')
+}
+function okPend(){
+  var key=dkey(off);S.days[key]=S.days[key]||[];
+  pend.forEach(function(x,i){S.days[key].push({id:Date.now()+i,n:x.n,k:x.k,t:'f',img:i===0?img:''});S.recent[x.n]=x.k});
+  save();pend=null;showPend('');$('n').value='';$('k').value='';resetPhoto();render()
+}
+function render(){
+  var items=S.days[dkey(off)]||[],eat=0,burn=0;
+  items.forEach(function(x){if(x.t==='f')eat+=x.k;else burn+=x.k});
+  var net=eat-burn,left=S.goal-net;
+  $('lbl').textContent=lab(off);
+  $('rem').textContent=Math.abs(left);
+  $('rem').style.color=left<0?'var(--bad)':'var(--tx)';
+  $('remL').textContent=left<0?'kcal por encima':'kcal restantes';
+  $('goal').textContent=S.goal+' kcal';
+  var p=Math.max(0,Math.min(100,net/S.goal*100));
+  $('pct').style.width=p+'%';$('pct').style.background=left<0?'var(--bad)':'var(--acc)';
+  $('eat').textContent='Comido: '+eat;$('burn').textContent='Ejercicio: −'+burn;
+  var rk=Object.keys(S.recent).slice(-8).reverse();
+  $('rec').innerHTML=rk.map(function(n){return'<button onclick="quick(this.dataset.n)" data-n="'+esc(n)+'">'+esc(n)+' · '+S.recent[n]+'</button>'}).join('');
+  $('list').innerHTML=items.length?items.slice().reverse().map(function(x){
+    return'<div class="it">'+(x.img?'<img src="'+x.img+'" alt="">':'')+'<div class="n">'+(x.t==='e'?'🔥 ':'')+esc(x.n)+'</div><div class="k'+(x.t==='e'?' neg':'')+'">'+(x.t==='e'?'−':'')+x.k+'</div><button class="x" onclick="del('+x.id+')" aria-label="Borrar">×</button></div>'
+  }).join(''):'<div class="empty">Todavía no hay nada apuntado este día.</div>';
+}
+render();
+</script>
+</body>
+</html>
